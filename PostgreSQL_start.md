@@ -1,5 +1,5 @@
-# PostSQL Start
-Use the following commands to start the Postgre server:
+# PostgreSQL Start
+Use the following commands to start the PostgreSQL server:
 ```
 ssh nw-syd-vxdb.cse.unsw.edu.au
 source /localstorage/$USER/env
