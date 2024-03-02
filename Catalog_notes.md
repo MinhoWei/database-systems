@@ -22,46 +22,52 @@ The following is the code for schema() function, which prints out the schemas of
 create or replace function schema() returns setof text
 as $$
 declare
-        rec record;      -- store each row returned by the query
-        rel text := '';  -- store the current table name
-        att text := '';  -- store the attribute names of the current table
-        out text := '';  -- construct the output line
-	len integer := 0;    -- track the length of the output line
+        rec record;              -- record: hold a row of data (a composite data type)
+        current_rel text := '';  -- the current table name
+        att text := '';          -- a set of column names
+        out text := '';          -- the output line
+	    len integer := 0;        -- keep track of the output length
 begin
 	for rec in
 		select relname,attname
 		from   pg_class t, pg_attribute a, pg_namespace n
-		where  t.relkind='r'           -- include only the tables
+		where  t.relkind='r'           -- include only ordinary tables
 			and t.relnamespace = n.oid
 			and n.nspname = 'public'
 			and attrelid = t.oid
 			and attnum > 0             -- column number > 0
 		order by relname,attnum
 	loop
-		if (rec.relname <> rel) then -- checks if the current record's table name is different from the one being processed
-			if (rel <> '') then
-				out := rel || '(' || att || ')';
+	    -- if relation name is different from current relation name
+		if (rec.relname <> current_rel) then
+			if (current_rel <> '') then
+				out := current_rel || ' (' || att || ')';
 				return next out;
 			end if;
 			-- resets for the new table
-			rel := rec.relname;
+			current_rel := rec.relname;
 			att := '';
 			len := 0;
 		end if;
+
 		if (att <> '') then
 			att := att || ', ';
 			len := len + 2;
 		end if;
-		if (len + length(rec.attname) > 70) then -- handles line length
+        
+		-- handles output line length
+		if (len + length(rec.attname) > 70) then
 			att := att || E'\n        ';
 			len := 0;
 		end if;
+
 		att := att || rec.attname;
 		len := len + length(rec.attname);
 	end loop;
+
 	-- deal with last table
-	if (rel <> '') then
-		out := rel || '(' || att || ')';
+	if (current_rel <> '') then
+		out := current_rel || ' (' || att || ')';
 		return next out;
 	end if;
 end;
