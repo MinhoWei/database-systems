@@ -28,3 +28,13 @@ create type Days2 as enum
 Note: A domain is essentially a data type with constraints. An enum (enumerated type) is a data type that comprises a static, ordered set of values. The main differences are these: Domains allow for more complex constraints and can be based on any data type, not just character strings. Enums are limited to the specified list of values. Also, domains are based on existing data types and carry the same storage characteristics, whereas enums are stored as integers and have their own distinct storage characteristics.
 
 Also, Days2 type is more appropriate in this case. Because enumerated type is a _ordered set_ of values.
+
+## Define a New Base Data Type
+In order to define a new base data type, a user needs to provide:
+
+ - input and output functions (in C) for values of the type
+ - C data structure definitions to represent type values internally
+ - an SQL definition for the type, giving its length, alignment and i/o functions
+ - SQL definitions for operators on the type
+ - C functions to implement the operators
+
