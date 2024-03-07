@@ -38,3 +38,5 @@ In order to define a new base data type, a user needs to provide:
  - SQL definitions for operators on the type
  - C functions to implement the operators
 
+### complex.source
+Creating a new type: We are going to create a new
