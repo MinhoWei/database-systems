@@ -23,73 +23,70 @@ The following is the code for schema() function, which prints out the schemas of
 create or replace function schema() returns setof text
 as $$
 declare
-        rec record;              -- record: hold a row of data (a composite data type)
-        current_rel text := '';  -- the current table name
-        att text := '';          -- a set of column names
-        out text := '';          -- the output line
-	    len integer := 0;        -- keep track of the output length
+        rec record;
+        rel text := '';
+        att text := '';
+        out text := '';
+	len integer := 0;
 begin
 	for rec in
 		select relname,attname
 		from   pg_class t, pg_attribute a, pg_namespace n
-		where  t.relkind='r'           -- include only ordinary tables
+		where  t.relkind='r'           -- regular tables
 			and t.relnamespace = n.oid
-			and n.nspname = 'public'
+			and n.nspname = 'public'   -- in the 'public' schema
 			and attrelid = t.oid
-			and attnum > 0             -- column number > 0
+			and attnum > 0
 		order by relname,attnum
 	loop
-	    -- if relation name is different from current relation name
-		if (rec.relname <> current_rel) then
-			if (current_rel <> '') then
-				out := current_rel || ' (' || att || ')';
+		if (rec.relname <> rel) then
+		    -- finalizes the output string for the previous table
+			-- starts processing the new one
+			if (rel <> '') then
+				out := rel || '(' || att || ')';
 				return next out;
 			end if;
-			-- resets for the new table
-			current_rel := rec.relname;
+			rel := rec.relname;
 			att := '';
 			len := 0;
 		end if;
-
 		if (att <> '') then
 			att := att || ', ';
 			len := len + 2;
 		end if;
-        
-		-- handles output line length
 		if (len + length(rec.attname) > 70) then
 			att := att || E'\n        ';
 			len := 0;
 		end if;
-
 		att := att || rec.attname;
 		len := len + length(rec.attname);
 	end loop;
-
 	-- deal with last table
-	if (current_rel <> '') then
-		out := current_rel || ' (' || att || ')';
+	if (rel <> '') then
+		out := rel || '(' || att || ')';
 		return next out;
 	end if;
 end;
 $$ language plpgsql;
 ```
+The usage and output are as follows:
+![](https://github.com/MinhoWei/database-systems/blob/main/catalog1.png)
 
 The following is a modified version of schema(), which also prints out the data type of each attribute.
-
 ```
+-- create a new type SchemaTuple
 drop type if exists SchemaTuple cascade;
 create type SchemaTuple as ("table" text, "attributes" text);
 
 create or replace function schema1() returns setof SchemaTuple
 as $$
 declare
-        rec   record;             -- record to hold each row returned by the query
-        current_rel   text := ''; -- current table name
-	    attr  text := '';         -- attribute name and type 
-        attrs text := '';         -- attribute strings for a single table
-        out   SchemaTuple;        -- output line
-	    len   integer := 0;       -- output length
+        rec   record;
+        rel   text := '';
+	    attr  text := '';
+        attrs text := '';
+        out   SchemaTuple;
+	    len   integer := 0;
 begin
 	for rec in
 		select r.relname, a.attname, t.typname, a.atttypmod
@@ -97,28 +94,25 @@ begin
 			join pg_namespace n on (r.relnamespace = n.oid)
 			join pg_attribute a on (a.attrelid = r.oid)
 			join pg_type t on (a.atttypid = t.oid)
-		where  r.relkind='r'          -- regular table
+		where  r.relkind='r'
 			and n.nspname = 'public'
-			and attnum > 0            -- column number > 0
+			and attnum > 0
 		order by relname,attnum
 	loop
-		if (rec.relname <> current_rel) then
-			if (current_rel <> '') then
-				out."table" := current_rel;
-				out."attributes" := attrs;
+		if (rec.relname <> rel) then
+			if (rel <> '') then
+				out."table" := rel;
+				out.attributes := attrs;
 				return next out;
 			end if;
-			current_rel := rec.relname;
+			rel := rec.relname;
 			attrs := '';
 			len := 0;
 		end if;
-
 		if (attrs <> '') then
 			attrs := attrs || ', ';
 			len := len + 2;
 		end if;
-
-        -- add the type names
 		if (rec.typname = 'varchar') then
 			rec.typname := 'varchar('||(rec.atttypmod-4)||')';
 		elsif (rec.typname = 'bpchar') then
@@ -128,21 +122,18 @@ begin
 		elsif (rec.typname = 'float8') then
 			rec.typname := 'float';
 		end if;
-
 		attr := rec.attname||':'||rec.typname;
-
 		if (len + length(attr) > 50) then
 			attrs := attrs || E'\n';
 			len := 0;
 		end if;
-
 		attrs := attrs || attr;
 		len := len + length(attr);
 	end loop;
 	-- deal with last table
-	if (current_rel <> '') then
-		out."table" := current_rel;
-		out."attributes" := attrs;
+	if (rel <> '') then
+		out."table" := rel;
+		out.attributes := attrs;
 		return next out;
 	end if;
 end;
