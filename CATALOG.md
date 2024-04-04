@@ -70,6 +70,7 @@ end;
 $$ language plpgsql;
 ```
 The usage and output are as follows:
+
 ![](https://github.com/MinhoWei/database-systems/blob/main/catalog2.png)
 
 The following is a modified version of schema(), which also prints out the data type of each attribute.
@@ -140,4 +141,5 @@ end;
 $$ language plpgsql;
 ```
 The usage and output are as follows:
+
 ![](https://github.com/MinhoWei/database-systems/blob/main/catalog3.png)
