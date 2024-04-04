@@ -1,5 +1,7 @@
 # The PostgreSQL Catalog
 ## Important PostgreSQL System Catalog Tables
+Note: Details on the other tables, and complete details of the given tables, are available in the PostgreSQL documentation: *https://www.postgresql.org/docs/16/catalogs.html*.
+
 ![](https://github.com/MinhoWei/database-systems/blob/main/catalog1.png)
 These are tables that contain metadata about the database. Each table or view stores information about a different aspect of the database, such as users, databases, tables, columns, and data types.
 
@@ -17,7 +19,6 @@ These are tables that contain metadata about the database. Each table or view st
 
 ## schema() Function
 The following is the code for schema() function, which prints out the schemas of tables in a database.
-
 ```
 create or replace function schema() returns setof text
 as $$
