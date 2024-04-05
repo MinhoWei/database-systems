@@ -100,3 +100,5 @@ select oid,relpages from pg_class where relname='courses';
 ls -l NNNNN -- NNNNN is the oid of the course table
 bc -l -- this is a calculator
 ```
+
+Note: In order to run above commands, first we need to use **select oid, datname from pg_database;** to find the OID of the target database, then go to **/localstorage/$USER/pgsql/data/base/OID**.
