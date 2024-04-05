@@ -1,3 +1,32 @@
+# SERVER CONFIG
+
+Most configuration parameters can be set by modifying the *$PGDATA/postgresql.conf* file and restarting the server. The standard PostgreSQL mechanism for starting the server is yet another script, called *pg_ctl*:
+```
+pg_ctl start
+pg_ctl stop
+pg_ctl status
+```
+
+The *pgs* script simply invokes *pg_ctl* to start a server, with some extra options:
+```
+pg_ctl -w start -l /localstorage/$USER/pgsql/data/log
+```
+
+Several options:
+ - The **-l** option tells the PostgreSQL server which file to use to write its log messages.
+ - The **-w** option tells pg_ctl to wait until the server has actually started properly before returning.
+ - To pass configuration parameters, you use the **-o** option and a single string containing all the server parameters.
+ - **-B** parameter to postgres lets you say how many shared memory buffers the server should use.
+
+For example, you could start postgres and get it to use just 16 buffers as follows:
+```
+pg_ctl start -o '-B 16' -l /localstorage/$USER/pgsql/log
+```
+
+
+
+
+
 For the queries below, think about and describe the patterns of access to the data in the tables that would be required to answer them.
 
 (a)
