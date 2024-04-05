@@ -23,11 +23,17 @@ For example, you could start postgres and get it to use just 16 buffers as follo
 pg_ctl start -o '-B 16' -l /localstorage/$USER/pgsql/log
 ```
 
+Q: How many shared buffers the PostgreSQL server uses by default. (Hint: this is given in the postgresql.conf file in units of MB (not number of buffers); each buffer is 8KB long).
 
+A: The value in the postgresql.conf file produced by pgs is the default 128MB. If the value of shared_buffers in NMB, and the size of each buffer is 8KB, then the total number of buffers is given by the formula (N*1024*1024)/(8*1024). For 128MB, this gives 16384 buffers.
 
+**df+** command: 
 
+We can look at the definition of some functions either in the .sql file, or via psql's \df+ command. If you're using \df+, you'll find it useful to change how psql displays its results, otherwise the output from \df+ is a mess. You can switch the output format in psql using the **\x** command. This causes psql to show the value of each attribute on a seperate line; useful if attributes values are large. Don't forget to use \x to change the output format back before continuing.
 
-For the queries below, think about and describe the patterns of access to the data in the tables that would be required to answer them.
+# FILE STRUCTURES
+
+Q: For the queries below, think about and describe the patterns of access to the data in the tables that would be required to answer them.
 
 (a)
 ```
@@ -58,6 +64,10 @@ where  c.id = i.course;
 Requires a join on the Courses and Items table; each tuple in each table will need to be accessed, possibly multiple times; in the worst-case scenario, we would read the Courses table once and read the entire Items table for each page in the Courses table.
 
 _Note: You can compare the time taken for the first two queries by turning on psql's timing mechanism, using the command \timing on. If you run the first two queries a few times you will observe that (a) the time value is different each time (thanks to the way times are computed), (b) that the first query generally takes less time than the second._
+
+An example usage is provided as follow.
+
+![]https://github.com/MinhoWei/database-systems/blob/main/file1.png
 
 # How Data is Stored in the File System
 
