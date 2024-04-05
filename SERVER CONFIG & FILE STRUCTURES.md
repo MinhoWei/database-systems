@@ -67,9 +67,9 @@ _Note: You can compare the time taken for the first two queries by turning on ps
 
 An example usage is provided as follow.
 
-![]https://github.com/MinhoWei/database-systems/blob/main/file1.png
+![](https://github.com/MinhoWei/database-systems/blob/main/file1.png)
 
-# How Data is Stored in the File System
+## How Data is Stored in the File System
 
 All data is for a given database is stored under the directory (folder):
 
@@ -83,12 +83,14 @@ The following SQL query will help you work out what is the OID for your database
 ```
 select oid, datname from pg_database;
 ```
-Write a query to print the number of data pages in each relation. ("Data pages" refers to the basic unit of data storage on disk. A "page" is a fixed-length block of this storage)
+
+Q: Write a query to print the number of data pages in each relation. ("Data pages" refers to the basic unit of data storage on disk. A "page" is a fixed-length block of this storage)
 ```
 select c.relname,c.relpages
 from   pg_class c, pg_namespace n
 where  c.relkind='r' and c.relnamespace=n.oid and n.nspname='public';
 ```
+
 Once you've got the page counts in the catalog, check that they're consistent with the file sizes in the directory for the uni database (assuming an 8KB page size).
 
 Below is an example of how to do this:
