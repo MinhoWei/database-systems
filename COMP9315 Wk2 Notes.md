@@ -34,10 +34,10 @@ Remarks:
  - When objects are removed, the allocated space will: -> be reused for new data -> left vacant -> compacted (reclaim the space and reduce the size)
 
 An example single-file DBMS layout:
-
-|     spacemap        |
-
-[0]                      [10]
+```
+| SpaceMap | TableMap | Employee Data Pages | Project Data Pages | ...
+[0]       [10]       [20]                 [620]                 [720]
+```
 
 
 
