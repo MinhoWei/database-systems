@@ -36,7 +36,8 @@ Remarks:
 An example single-file DBMS layout:
 
 |     spacemap        |
-                      [10]
+
+[0]                      [10]
 
 
 
