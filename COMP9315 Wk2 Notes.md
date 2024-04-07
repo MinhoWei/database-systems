@@ -31,7 +31,11 @@ Objects are allocated to regions (segments) of a single file:
 
 Remarks:
  - If an object grows too large for allocated segments, allocate an extension
- - 
+ - When objects are removed, the allocated space will: -> be reused for new data -> left vacant -> compacted (reclaim the space and reduce the size)
+
+An example single-file DBMS layout:
+
+|
 
 
 
