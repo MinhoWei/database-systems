@@ -1,4 +1,4 @@
-# Cost Models
+ # Cost Models
 Cost
 
 **Time cost**: total time taken to execute a method (we do not consider this)
@@ -35,7 +35,8 @@ Remarks:
 
 An example single-file DBMS layout:
 
-|
+|     spacemap        |
+                      [10]
 
 
 
