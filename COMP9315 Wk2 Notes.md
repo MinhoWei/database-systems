@@ -294,6 +294,8 @@ Remarks:
  - **Visibility map**: -> indicates pages where *all* tuples are "visible" -> such pages can be ignored by VACUUM
 
 PostgreSQL **PageID** values are structured:
+
+*PageID = BufferTag = (rnode, forkNum, blockNum)*
 ```
 typedef struct
 {
@@ -335,6 +337,89 @@ findBlock(BufferTag pageID) returns (Vfd, off_t)
    return (fd, offset)
 }
 ```
+
+# Buffer Pool
+
+Data structures:
+ - Page frames[NBUFS] (frames is an array of pages)
+ - FrameData directory[NBUFS] (directory stores information / metadata about each frame in the buffer pool)
+ - Page is byte[BUFSIZE] (a page is just a sequence of bytes)
+
+For each frame, we need to know:   (FrameData)
+ - which Page it contains, or whether empty/free
+ - whether it has been modified since loading (*dirty bit*)
+ - how many transactions are currently using it (*pin count*)
+ - time-stamp for most recent access (assists with replacement)
+
+How scans are performed with Buffer Pool:
+```
+Buffer buf;
+int N = numberOfBlocks(Rel);
+for (i = 0; i < N; i++) {
+   pageID = makePageID(db,Rel,i);
+   bufID = request_page(pageID);
+   buf = frames[bufID]
+   for (j = 0; j < nTuples(buf); j++)
+      process(buf, j)
+   release_page(pageID);
+}
+```
+Requires N page reads on the first pass.
+
+If we read it again, 0 ≤ page reads ≤ N (some / all of the pages may still in the buffer pool. That would not need to be read from disk to buffer again.
+
+Implementation of **request_page()**:
+ - It first checks if the requested page is already present in the buffer pool. If it is, the function does not need to read the page from the disk again (just return bufID).
+ - If the page is found in the pool, the function sets bufID to the index of the frame where the page is located.
+```
+int request_page(PageID pid)
+{
+   if (pid in Pool)
+      bufID = index for pid in Pool
+   else {
+      if (no free frames in Pool)
+         evict a page // free a frame
+      bufID = allocate free frame
+      directory[bufID].page = pid
+      directory[bufID].pin_count = 0
+      directory[bufID].dirty_bit = 0
+   }
+   directory[bufID].pin_count++
+   return bufID
+}
+```
+
+Evicting a page:
+ - find frame(s) preferably satisfying: pin count = 0 and dirty bit = 0
+ - if selected frame was modified, flush frame to disk
+ - flag directory entry as "frame empty"
+
+## Page Replacement Policies
+Several schemes are commonly in use:
+ - Least Recently Used (LRU)
+ - Most Recently Used (MRU)
+ - First in First Out (FIFO)
+ - Random
+
+Cost analysis for page replacement:
+
+(a) sequential scan, LRU or MRU, n ≥ b: First scan costs b  reads; subsequent scans are "free" (the data already loaded into buffer and no need to read from disk any more).
+
+(b) sequential scan, MRU, n < b: First scan costs b reads; subsequent scans cost b - n  reads.
+
+(b) sequential scan, LRU, n < b: All scans cost b  reads; known as **sequential flooding**.
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
