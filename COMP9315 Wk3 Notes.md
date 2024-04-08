@@ -232,10 +232,39 @@ Cost analysis for one searching in unordered file
  - average case: read half of the pages (b/2)
 
 ## Cost analysis 4
+Relation copying: 'create table T as (select * from S);'
+```
+s = start scan of S
+make empty relation T
+while (t = next_tuple(s)) {
+    insert tuple t into relation T
+}
+```
+Note: Possible that T is smaller than S -> may be unused free space in S where tuples were removed -> if T is built by simple append, will be compact
 
+In terms of existing relation/page/tuple operations:
+```
+Relation in;       // relation handle (incl. files)
+Relation out;      // relation handle (incl. files)
+int ipid,opid,tid; // page and record indexes
+Record rec;        // current record (tuple)
+Page ibuf,obuf;    // input/output file buffers
 
-
-
+in = openRelation("S", READ);
+out = openRelation("T", NEW|WRITE);
+clear(obuf);  opid = 0;
+for (ipid = 0; ipid < nPages(in); ipid++) {
+    get_page(in, ipid, ibuf);
+    for (tid = 0; tid < nTuples(ibuf); tid++) {
+        rec = get_record(ibuf, tid);
+        if (!hasSpace(obuf,rec)) {
+            put_page(out, opid++, obuf);
+            clear(obuf);
+        }
+        insert_record(obuf,rec);
+}   }
+if (nTuples(obuf) > 0) put_page(out, opid, obuf);
+```
 
 
 
