@@ -83,6 +83,70 @@ The Scan data structure (which may be called ScanData in some implementations) u
  - curPID: The current page ID within the relation, which indicates which page is currently in the buffer.
  - curTID: The current tuple ID within the current page, which indicates which tuple is currently being processed.
 
+The **start_scan** function:
+```
+Scan start_scan(Relation rel)
+{
+	Scan new = malloc(ScanData);
+	new->rel = rel;
+	new->curPage = get_page(rel,0);
+	new->curPID = 0;
+	new->curTID = 0;
+	return new;
+}
+```
+
+The **next_tuple** function:
+```
+Tuple next_tuple(Scan s)
+{
+	if (s->curTID == nTuples(s->curPage)) {
+		// finished cur page, get next
+		if (s->curPID == nPages(s->rel))
+			return NULL;
+		s->curPID++;
+		s->curPage = get_page(s->rel, s->curPID);
+		s->curTID =0;
+	}
+	Record r = get_record(s->curPage, s->curTID);
+	s->curTID++;
+	return makeTuple(s->rel, r);
+}
+```
+
+Implements iterator data/operations:
+ - HeapScanDesc ... struct containing iteration state
+ - scan = heap_beginscan(rel,...,nkeys,keys)
+ - tup = heap_getnext(scan, direction)
+ - heap_endscan(scan) ... frees up scan struct
+ - res = HeapKeyTest(tuple,...,nkeys,keys) -> performs ScanKeys tests on tuple ... checks is it a result tuple?
+
+**HeapScanDescData**
+```
+typedef HeapScanDescData *HeapScanDesc;
+
+typedef struct HeapScanDescData
+{
+  // scan parameters 
+  Relation      rs_rd;        // heap relation descriptor 
+  Snapshot      rs_snapshot;  // snapshot ... tuple visibility 
+  int           rs_nkeys;     // number of scan keys 
+  ScanKey       rs_key;       // array of scan key descriptors 
+  ...
+  // state set up at initscan time 
+  PageNumber    rs_npages;    // number of pages to scan 
+  PageNumber    rs_startpage; // page # to start at 
+  ...
+  // scan current state, initally set to invalid 
+  HeapTupleData rs_ctup;      // current tuple in scan
+  PageNumber    rs_cpage;     // current page # in scan
+  Buffer        rs_cbuf;      // current buffer in scan
+   ...
+} HeapScanDescData;
+```
+
+The **HeapScanDescData** structure is used to keep track of the state and configuration of a scan operation on a heap-organized table within a database system. Its purpose is to maintain all necessary information for the scan so that the database system can efficiently continue the operation from one call to the next without reevaluating the initial conditions.
+
 A **tuple** can be described as (C struct):
 
 (ushort is unsigned short integer)
@@ -265,6 +329,208 @@ for (ipid = 0; ipid < nPages(in); ipid++) {
 }   }
 if (nTuples(obuf) > 0) put_page(out, opid, obuf);
 ```
+
+# The Sort Operation
+## Two-Way Merge Sort
+```
+input file:  |7, 3| |1, 2| |3, 5| |6, 4|
+1-page runs: |3, 7| |1, 2| |3, 5| |4, 6|
+2-page runs: |1, 2|-|3, 7| |3, 4|-|5, 6|
+Output file: |1, 2|-|3, 3| |4, 5|-|6, 7|
+```
+
+Remarks:
+ - Two-Way Merge Sort requires 3 in-memory buffers (2 for input and 1 for output)
+ - Need a function **tupCompare(r1,r2,f)**:
+```
+int tupCompare(r1,r2,f)
+{
+   if (r1.f < r2.f) return -1;
+   if (r1.f > r2.f) return 1;
+   return 0;
+}
+```
+
+Sketch of multi-attribute sorting function:
+```
+int tupCompare(r1,r2,criteria)
+{
+   foreach (f,ord) in criteria {
+      if (ord == ASC) {
+         if (r1.f < r2.f) return -1;
+         if (r1.f > r2.f) return 1;
+      }
+      else {
+         if (r1.f > r2.f) return -1;
+         if (r1.f < r2.f) return 1;
+      }
+   }
+   return 0;
+}
+```
+
+Cost of Two-way Merge Sort:
+
+For a file containing b data pages:
+ - require ceil(log2b) passes to sort,
+ - each pass requires b page reads, b page writes
+ - Gives total cost:   2b*ceil(log2b)
+
+## n-Way Merge Sort
+Suppose we use B total buffers, that is, n = B - 1 input buffers, 1 output buffer
+
+Method:
+```
+// Produce B-page-long runs
+for each group of B pages in Rel {
+    read B pages into memory buffers
+    sort group in memory
+    write B pages out to Temp
+}
+// Merge runs until everything sorted
+numberOfRuns = ⌈b/B⌉
+while (numberOfRuns > 1) {
+    // n-way merge, where n=B-1
+    for each group of n runs in Temp {
+        merge into a single run via input buffers
+        write run to newTemp via output buffer
+    }
+    numberOfRuns = ⌈numberOfRuns/n⌉
+    Temp = newTemp // swap input/output files
+}
+```
+
+Cost of n-way Merge Sort:
+
+For b data pages and B buffers:
+ - first pass: read/writes b pages, gives b0 = ⌈b/B⌉ runs
+ - then need ⌈lognb0⌉ passes until sorted, where n = B-1
+ - each pass reads and writes b pages   (i.e. 2*b page accesses)
+ - Cost = 2b*(1 + ⌈lognb0⌉),   where b0 = ⌈b/B⌉ and n = B-1
+
+Disk-based sort has phases:
+ - divide input into sorted runs using HeapSort
+ - merge using N buffers, one output buffer
+ - N = as many buffers as workMem allows
+
+Sorting comparison operators are obtained via catalog (in Type.o):
+```
+// gets pointer to function via pg_operator
+struct Tuplesortstate { ... SortTupleComparator ... };
+
+// returns negative, zero, positive
+ApplySortComparator(Datum datum1, bool isnull1,
+                    Datum datum2, bool isnull2,
+                    SortSupport sort_helper);
+```
+
+# Implementing Projection
+(Note: duplicate tuples are eliminated during projection)
+
+## Sort-based Projection
+Requires a temporary file/relation (Temp):
+```
+for each tuple T in Rel {
+    T' = mkTuple([attrs],T)
+    write T' to Temp
+}
+
+sort Temp on [attrs]
+
+for each tuple T in Temp {
+    if (T == Prev) continue
+    write T to Result
+    Prev = T
+}
+```
+
+Cost of Sort-based Projection:
+
+The costs involved are (assuming B=n+1 buffers for sort):
+
+ - scanning original relation Rel:   bR   (with cR)
+ - writing Temp relation:  bT     (smaller tuples, cT > cR, sorted)
+ - sorting Temp relation: 2.bT.(1+ceil(lognb0)) where b0 = ceil(bT/B)
+ - scanning Temp, removing duplicates:   bT
+ - writing the result relation:   bOut     (maybe less tuples)
+ - Cost = sum of above = bR + bT + 2.bT.(1+ceil(lognb0)) + bT + bOut
+
+## Hash-based Projection
+Two phases:
+ - Partitioning phase
+ - Duplicate elimination phase
+
+Algorithm for both phases:
+```
+for each tuple T in relation Rel {
+    T' = mkTuple([attrs],T)
+    H = h1(T', n)
+    B = buffer for partition[H]
+    if (B full) write and clear B
+    insert T' into B
+}
+for each partition P in 0..n-1 {
+    for each tuple T in partition P {
+        H = h2(T, n)
+        B = buffer for hash value H
+        if (T not in B) insert T into B
+        // assumes B never gets full
+    }
+    write and clear all buffers
+}
+```
+
+Cost of Hash-based Projection
+
+The total cost is the sum of the following:
+ - scanning original relation R:   bR
+ - writing partitions:   bP   (bR vs bP ?)
+ - re-reading partitions:   bP
+ - writing the result relation:   bOut
+ - Cost = bR + 2bP + bOut
+
+## Projection on Primary Key
+No duplicates, so the above approaches are not required.
+
+Method:
+```
+bR = nPages(Rel)
+for i in 0 .. bR-1 {
+   P = read page i
+   for j in 0 .. nTuples(P) {
+      T = getTuple(P,j)
+      T' = mkTuple(pk, T)
+      if (outBuf is full) write and clear
+      append T' to outBuf
+   }
+}
+if (nTuples(outBuf) > 0) write
+```
+
+(Comparing to previous methods, no need to remove duplicates)
+
+## Index-only Projection
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
