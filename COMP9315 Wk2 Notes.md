@@ -38,7 +38,51 @@ An example single-file DBMS layout:
 | SpaceMap | TableMap | Employee Data Pages | Project Data Pages | ...
 [0]       [10]       [20]                 [620]                 [720]
 ```
+**SpaceMap** = [(offset, #pages, status), ...] =  [ (0,10,U), (10,10,U), (20,600,U), (620,100,U), (720,20,F) ]
 
+E.G. (20,600,U) means that Employee Data Pages starts at page index 20, has 600 pages, the status is U (used)
+
+**TableMap** = [(name, offset, #pages)...] = [ ("employee",20,500), ("project",620,40) ]
+
+E.G. ("employee",20,500) means that "employee" relation starts at page index 20, 500 represents the number of pages that the employee table occupies in the file
+
+Note: *page offset = page id * PAGESIZE*
+
+## Storage manager (single file) data structures
+```
+typedef struct DBrec {
+   char *dbname;    // copy of database name
+   int fd;          // the database file
+   SpaceMap map;    // map of free/used areas 
+   NameTable names; // map names to areas + sizes
+} *DB;
+
+typedef struct Relrec {
+   char *relname;   // copy of table name
+   int   start;     // page index of start of table data
+   int   npages;    // number of pages of table data
+   ...
+} *Rel;
+```
+
+With the above definition, the query 'select name from Employee;' might be inplemented as:
+```
+DB db = openDatabase("myDB");
+Rel r = openRelation(db,"Employee");
+Page buffer = malloc(PAGESIZE*sizeof(char));
+
+for (int i = 0; i < r->npages; i++) {
+   PageId pid = r->start+i;            // page id = file id + offset, start is the page index at the start of table data
+   get_page(db, pid, buffer);          // read the page from DB to buffer
+   for each tuple in buffer {
+      get tuple data and extract name
+      add (name) to result tuples
+   }
+}
+```
+The **openDatabase** implementation:
+```
+```
 
 
 
