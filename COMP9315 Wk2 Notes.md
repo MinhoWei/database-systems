@@ -225,15 +225,116 @@ char *relpath(RelFileNode r)  // simplified
 }
 ```
 
-## 
+## File Descriptor Pool
+Unix has limits on the number of concurrently open files. PostgreSQL maintains a pool of open file descriptors:
+ - to hide this limitation from higher level functions
+ - to minimise expensive open() operations
 
+Interface to file descriptor (pool):
 
+```
+File FileNameOpenFile(FileName fileName,
+                      int fileFlags, int fileMode);
+     // open a file in the database directory ($PGDATA/base/...)
+File OpenTemporaryFile(bool interXact);
+     // open temp file; flag: close at end of transaction?
+void FileClose(File file);
+void FileUnlink(File file);
+int  FileRead(File file, char *buffer, int amount);
+int  FileWrite(File file, char *buffer, int amount);
+int  FileSync(File file);
+long FileSeek(File file, long offset, int whence);
+int  FileTruncate(File file, long offset);
+```
 
+**Virtual file descriptors (Vfd)**
 
+-> physically stored in dynamically-allocated array
+```
+VfdCache   [0]        [1]         [2]        ...
+            | - , -    |fd, pos... |fd, pos...
+                      Vfd         Vfd       
+```
+-> also arranged into list by recency-of-use
+-> VfdCache[0] holds list head/tail pointers.
 
+Virtual file descriptor records (simplified):
+```
+typedef struct vfd
+{
+    s_short  fd;              // current FD, or VFD_CLOSED if none
+    u_short  fdstate;         // bitflags for VFD's state
+    File     nextFree;        // link to next free VFD, if in freelist
+    File     lruMoreRecently; // doubly linked recency-of-use list
+    File     lruLessRecently;
+    long     seekPos;         // current logical file position
+    char     *fileName;       // name of file, or NULL for unused VFD
+    // NB: fileName is malloc'd, and must be free'd when closing the VFD
+    int      fileFlags;       // open(2) flags for (re)opening the file
+    int      fileMode;        // mode to pass to open(2)
+} Vfd;
+```
 
+PostgreSQL stores each table:
+ - in the directory PGDATA/pg_database.oid
+ - often in multiple data files (aka *forks*)
 
+Possible files for a single PostgreSQL table with *pg_class.relfilename = Oid*:
 
+Oid     | table data pages |
+
+Oid.1   | more table data pages |
+
+Oid_fsm |free space map|
+
+Oid_vm  |visibility map|
+
+Remarks:
+ - **Free space map**: -> indicates where free space is in data pages -> "free" space is only free after VACUUM
+ - **Visibility map**: -> indicates pages where *all* tuples are "visible" -> such pages can be ignored by VACUUM
+
+PostgreSQL **PageID** values are structured:
+```
+typedef struct
+{
+    RelFileNode rnode;    // which relation/file
+    ForkNumber  forkNum;  // which fork (of reln)
+    BlockNumber blockNum; // which page/block 
+} BufferTag;
+```
+
+Access to a block of data proceeds (roughly) as follows:
+```
+getBlock(BufferTag pageID, Buffer buf)
+{
+   Vfd vf;  off_t offset;
+   (vf, offset) = findBlock(pageID)
+   lseek(vf.fd, offset, SEEK_SET)
+   vf.seekPos = offset;
+   nread = read(vf.fd, buf, BLOCKSIZE)
+   if (nread < BLOCKSIZE) ... we have a problem
+}
+```
+
+The **findBlock** function:
+```
+findBlock(BufferTag pageID) returns (Vfd, off_t)
+{
+   offset = pageID.blockNum * BLOCKSIZE
+   fileName = relpath(pageID.rnode)
+   if (pageID.forkNum > 0)
+      fileName = fileName+"."+pageID.forkNum
+   if (fileName is not in Vfd pool)
+      fd = allocate new Vfd for fileName
+   else
+      fd = use Vfd from pool
+   if (offset > fd.fileSize) {
+      fd = allocate new Vfd for next fork
+      offset = offset - fd.fileSize
+   }
+   return (fd, offset)
+}
+```
 
 
 
