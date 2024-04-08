@@ -409,7 +409,38 @@ Cost analysis for page replacement:
 
 (b) sequential scan, LRU, n < b: All scans cost b  reads; known as **sequential flooding**.
 
-
+Consider a query to find customers who are also employees:
+```
+select c.name
+from   Customer c, Employee e
+where  c.ssn = e.ssn;
+```
+This might be implemented inside the DBMS via nested loops:
+```
+for each tuple t1 in Customer {
+    for each tuple t2 in Employee {
+        if (t1.ssn == t2.ssn)
+            append (t1.name) to result set
+    }
+}
+```
+In terms of page-level operations, the algorithm looks like:
+```
+Rel rC = openRelation("Customer");
+Rel rE = openRelation("Employee");
+for (int i = 0; i < nPages(rC); i++) {
+    PageID pid1 = makePageID(db,rC,i);
+    Page p1 = request_page(pid1);
+    for (int j = 0; j < nPages(rE); j++) {
+        PageID pid2 = makePageID(db,rE,j);
+        Page p2 = request_page(pid2);
+        // compare all pairs of tuples from p1,p2
+        // construct solution set from matching pairs
+        release_page(pid2);
+    }
+    release_page(pid1);
+}
+```
 
 
 
