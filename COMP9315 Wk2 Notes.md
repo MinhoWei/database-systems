@@ -428,6 +428,7 @@ In terms of page-level operations, the algorithm looks like:
 ```
 Rel rC = openRelation("Customer");
 Rel rE = openRelation("Employee");
+
 for (int i = 0; i < nPages(rC); i++) {
     PageID pid1 = makePageID(db,rC,i);
     Page p1 = request_page(pid1);
@@ -442,18 +443,109 @@ for (int i = 0; i < nPages(rC); i++) {
 }
 ```
 
+PostgreSQL **buffer descriptors**:
+```
+typedef struct BufferDesc
+{
+   BufferTag  tag;           /* ID of page contained in buffer */
+   int        buf_id;        /* buffer's index number (from 0) */
 
+   /* state of the tag, containing:
+               flags, refcount and usagecount */
+   pg_atomic_uint32 state;
 
+   int         wait_backend_pgprocno;   /* pin-count waiter */
+   int         freeNext;      /* link in freelist chain */
+   LWLock      content_lock;  /* to lock access to buffer contents */
+} BufferDesc;
+```
 
+# Page Management
+RecordId = (PageId, TupleId) = (pid, tid) = rid
 
+recOffsetInPage = page.directory[tid].offset
 
+Relationship: Each *tuple* is represented by a *record* in some *page*. A page is just a collection of Records.
 
+Typical operations on pages and records:
+ - buf = request_page(rel,pid) ... get page via its PageId
+ - rec = get_record(buf,tid) ... get record from buffer
+ - rid = insert_record(rel,pid,rec) ... add new record
+ - update_record(rel,rid,rec) ... update value of record
+ - delete_record(rel,rid) ... remove record
+ - Note that rel is the open relation
 
+## Record Directory
+For *variable-length* records, must use record directory (slot directory): directory[i] gives location within page of i th record (location of tuple within page can change, tuple index does not change). 
 
+Possibilities for handling free-space within block:
+ - compacted
+ - fragmented
 
+Storage utilization
 
+Q: How many records can fit in a page?
 
+A: Suppose R is the average record size, c is the capacity of a page. Then:
 
+*HeaderSize + c * SlotSize + c * R <= PageSize*
 
+SlotSize is the size for an entry in the slot directory.
 
+## Overflows
+Sometimes, it may not be possible to insert a record into a page:
 
+-> no free-space fragment large enough
+-> overall free-space in page is not large enough
+-> the record is larger than the page
+-> no more free directory slots in page
+
+Large data items are stored in separate (TOAST, The Oversized Attribute Storage Technique) files. When a field value exceeds its size limit, PostgreSQL uses TOAST to store the oversized data in a separated TOAST file.
+
+Page-related data types:
+```
+// a Page is simply a pointer to start of buffer
+typedef Pointer Page;
+
+// indexes into the tuple directory
+typedef uint16  LocationIndex;
+
+// entries in tuple directory (line pointer array)
+typedef struct ItemIdData
+{
+   unsigned   lp_off:15,  // tuple offset from start of page
+              lp_flags:2, // unused,normal,redirect,dead
+              lp_len:15;  // length of tuple (bytes)
+} ItemIdData;
+
+typedef struct PageHeaderData  (simplified)
+{
+  ...                        // transaction-related data
+  uint16        pd_checksum; // checksum
+  uint16        pd_flags;    // flag bits (e.g. free, full, ...
+  LocationIndex pd_lower;    // offset to start of free space
+  LocationIndex pd_upper;    // offset to end of free space
+  LocationIndex pd_special;  // offset to start of special space
+  uint16        pd_pagesize_version;
+  ItemIdData    pd_linp[1];  // beginning of line pointer array
+} PageHeaderData;
+
+typedef PageHeaderData *PageHeader;
+```
+
+Operations on Pages:
+
+**void PageInit(Page page, Size pageSize, ...)**
+ - initialize a Page buffer to empty page
+ - in particular, sets pd_lower and pd_upper
+
+**OffsetNumber PageAddItem(Page page, Item item, Size size, ...)**
+ - insert one tuple (or index entry) into a Page
+ - fails if: not enough free space, too many tuples
+
+**void PageRepairFragmentation(Page page)**
+ - compact tuple storage to give one large free space region
+
+PostgreSQL has two kinds of pages:
+ - **heap pages** which contain tuples
+ - **index pages** which contain index entries (index entries tend to be smaller than tuples)
