@@ -510,32 +510,104 @@ if (nTuples(outBuf) > 0) write
 (Comparing to previous methods, no need to remove duplicates)
 
 ## Index-only Projection
+Can do projection without accessing data file iff ...
 
+-> relation is indexed on (A1,A2,...An)
 
+-> projected attributes are a prefix of (A1,A2,...An)
 
+Basic idea:
+ - scan through index file (which is already sorted on attributes)
+ - duplicates are already adjacent in index, so easy to skip
 
+Cost analysis
+ - index has bi pages   (where bi ≪ bR)
+ - Cost = bi reads + bOut writes
 
+Summary: Best case scenario for each (assuming n+1 in-memory buffers):
+ - **index-only**:   bi + bOut   ≪   bR + bOut
+ - **hash-based**:   bR + 2.bP + bOut
+ - **sort-based**:   bR + bT + 2.bT.ceil(lognb0) + bT + bOut
 
+# Implementing Selection
+Selection: 'select * from R where C'
 
+We consider three distinct styles of selection:
+ - **1-d** (one dimensional)   (condition uses only 1 attribute)
+ - **n-d** (multi-dimensional)   (condition uses >1 attribute)
+ - **similarity**   (approximate matching, with ranking)
 
+In order to implement select efficiently, we have two basic approaches:
 
+-> physical arrangement of tuples
+ - sorting   (search strategy)
+ - hashing   (static, dynamic, n-dimensional)
 
+-> additional indexing information
+ - index files   (primary, secondary, trees)
+ - signatures   (superimposed, disjoint)
 
+For all selection queries, the only possible strategy is:
+```
+// select * from R where C
+for each page P in file of relation R {
+    for each tuple t in page P {
+        if (t satisfies C)
+            add tuple t to result set
+    }
+}
+```
+In this case, the heap is scanned from the first to the last page (0 -> b-1)
 
+Costrange  =  Costpmr  =  b
 
+If we know that only one tuple matches the query (one query), a simple optimisation is to stop the scan once that tuple is found: Costone :      Best = 1      Average = b/2      Worst = b
 
+## Insertion in Heaps
+Insertion: new tuple is appended to file (in last page).
+```
+rel = openRelation("R", READ|WRITE);
+pid = nPages(rel)-1;
+get_page(rel, pid, buf);
+if (size(newTup) > size(buf))
+   { deal with oversize tuple }
+else {
+   if (!hasSpace(buf,newTup))
+      { pid++; nPages(rel)++; clear(buf); }
+   insert_record(buf,newTup);
+   put_page(rel, pid, buf);
+}
+```
 
+Costinsert  =  1r + 1w (plus possible extra writes for oversize tuples, e.g. PostgreSQL's TOAST)
 
+PostgreSQL's tuple insertion:
+```
+heap_insert(Relation relation,    // relation desc
+            HeapTuple newtup,     // new tuple data
+            CommandId cid, ...)   // SQL statement
+```
+Approach:
+ - finds page which has enough free space for newtup
+ - ensures page loaded into buffer pool and locked
+ - copies tuple data into page buffer, sets xmin, etc.
+ - marks buffer as dirty
+ - writes details of insertion into transaction log
+ - returns OID of new tuple if relation has OIDs
 
-
-
-
-
-
-
-
-
-
-
-
-
+## Deletion in Heaps
+Consider the deletion command: 'delete from R where C;'
+```
+rel = openRelation("R",READ|WRITE);
+for (p = 0; p < nPages(rel); p++) {
+    get_page(rel, p, buf);
+    ndels = 0;
+    for (i = 0; i < nTuples(buf); i++) {
+        tup = get_record(buf,i);
+        if (tup satisfies Condition)
+            { ndels++; delete_record(buf,i); }
+    }
+    if (ndels > 0) put_page(rel, p, buf);
+    if (ndels > 0 && unique) break;
+}
+```
