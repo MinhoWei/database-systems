@@ -611,3 +611,31 @@ for (p = 0; p < nPages(rel); p++) {
     if (ndels > 0 && unique) break;
 }
 ```
+
+## Update in Heaps
+SQL:  'update R  set F = val  where Condition'
+
+Analysis for updates is similar to that for deletion
+ - scan all pages
+ - replace any updated tuples   (within each page)
+ - write affected pages to disk
+ - Costupdate  =  br + bqw
+ - Complication: new tuple larger than old version  (too big for page). Solution for this:   delete, re-organise free space, then insert
+
+The **tuple_update** function:
+```
+heap_update(Relation relation,     // relation desc
+            ItemPointer otid,      // old tupleID
+            HeapTuple newtup, ..., // new tuple data
+            CommandId cid, ...)    // SQL statement
+```
+Note: essentially does delete(otid), then insert(newtup). Also, sets old tuple's ctid field to reference new tuple.
+
+### Heaps in PostgreSQL
+PostgreSQL stores all table data in heap files (by default). PostgreSQL "heap file" may use multiple physical files.
+
+-> files are named after the OID of the corresponding table. First data file is called simply OID, if size exceeds 1GB, create a fork called OID.1. Add more forks as data size grows (one fork for each 1GB)
+
+-> other files:
+ - free space map (OID_fsm), visibility map (OID_vm)
+ - optionally, TOAST file (if table has varlen attributes)
